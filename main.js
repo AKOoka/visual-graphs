@@ -4,9 +4,7 @@ const mapGraph = document.getElementById('map-graph')
 const ctx = mainGraph.getContext('2d')
 const ctxMap = mapGraph.getContext('2d')
 
-const Tau = Math.PI * 2
-
-const canvasWidth = 1000
+const canvasWidth = 500
 const canvasHeight = 250
 
 const mapHeight = 100
@@ -16,6 +14,8 @@ const lineWidth = 5
 const globalData = []
 let globalWidth = 0
 
+let target = 0
+
 const zoom = { start: 100, end: 200 }
 const zoomIndex = { start: null, end: null }
 
@@ -24,6 +24,8 @@ let maxHeight = 0
 
 let intervalWidth = zoom.end - zoom.start
 let intervalHeight = maxHeight - minHeight
+
+const scaledPos = pos => (globalWidth / canvasWidth) * pos
 
 function generateData (count, minimum, maximum) {
   console.time('generate')
@@ -37,13 +39,11 @@ function generateData (count, minimum, maximum) {
   console.timeEnd('generate')
 }
 
-function getIndexs () {
-  let i = 0
+function findHeight (start, end) {
+  minHeight = globalData[start][1]
+  maxHeight = globalData[start][1]
 
-  minHeight = globalData[0][1]
-
-  for (i; i < globalData.length; i++) {
-    const x = globalData[i][0]
+  for (let i = start + 1; i <= end; i++) {
     const y = globalData[i][1]
 
     if (y > maxHeight) {
@@ -53,6 +53,15 @@ function getIndexs () {
     if (y < minHeight) {
       minHeight = y
     }
+  }
+}
+
+function getIndexs () {
+  let i = 0
+  let x = globalData[i][0]
+
+  for (i; i < globalData.length; i++) {
+    x = globalData[i][0]
 
     if (x === zoom.start) {
       zoomIndex.start = i
@@ -66,16 +75,7 @@ function getIndexs () {
   }
 
   for (i; i < globalData.length; i++) {
-    const x = globalData[i][0]
-    const y = globalData[i][1]
-
-    if (y > maxHeight) {
-      maxHeight = y
-    }
-
-    if (y < minHeight) {
-      minHeight = y
-    }
+    x = globalData[i][0]
 
     if (x >= zoom.end) {
       zoomIndex.end = i
@@ -83,6 +83,9 @@ function getIndexs () {
       break
     }
   }
+
+  intervalWidth = zoom.end - zoom.start
+  intervalHeight = maxHeight - minHeight
 }
 
 function transformPoint (point, start, intervalW, intervalH, minH, canvasH) {
@@ -129,26 +132,10 @@ function drawMap () {
   ctxMap.stroke()
 }
 
-// function drawSlider (x) {
-//   ctxMap.beginPath()
-
-//   ctxMap.strokeStyle = '#d82060'
-
-//   ctxMap.lineWidth = 2
-
-//   ctxMap.moveTo(x, 0)
-//   ctxMap.lineTo(x, mapHeight)
-
-//   ctxMap.stroke()
-// }
-
 function drawInterval () {
-  // console.time('draw')
-
   getIndexs()
 
-  intervalWidth = zoom.end - zoom.start
-  intervalHeight = maxHeight - minHeight
+  findHeight(zoomIndex.start, zoomIndex.end)
 
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
 
@@ -164,15 +151,11 @@ function drawInterval () {
   }
 
   ctx.stroke()
-
-  // console.timeEnd('draw')
 }
 
-// function anime () {
-//   requestAnimationFrame(anime)
-// }
+let stopAnime = true
 
-const trackMouse = document.getElementById('track-mouse')
+const mapWrapper = document.getElementById('map-wrapper')
 const startSlider = document.getElementById('start-slider')
 const centerSlider = document.getElementById('center-slider')
 const endSlider = document.getElementById('end-slider')
@@ -183,60 +166,100 @@ endSlider.style.left = zoom.end + 'px'
 centerSlider.style.left = zoom.start + 'px'
 centerSlider.style.right = canvasWidth - zoom.end + 'px'
 
+const velocity = 0.15
+
 let dragged = null
 
-trackMouse.addEventListener('mousemove', event => {
-  if (dragged) {
-    const startPos = Number(startSlider.style.left.replace('px', ''))
-    const endPos = Number(endSlider.style.left.replace('px', ''))
+document.addEventListener('mousemove', event => {
+  target = event.clientX - mapWrapper.offsetLeft
 
-    const selectorWidth = (endPos - startPos) / 2
-
-    const scaledPos = pos => (globalWidth / canvasWidth) * pos
-
-    console.log(selectorWidth)
-
-    if (dragged === startSlider) {
-      dragged.style.left = event.layerX + 'px'
-
-      centerSlider.style.left = event.layerX + 'px'
-    } else if (dragged === endSlider) {
-      dragged.style.left = event.layerX + 'px'
-
-      centerSlider.style.right = canvasWidth - event.layerX + 'px'
-    } else {
-      startSlider.style.left = event.layerX - selectorWidth + 'px'
-      endSlider.style.left = event.layerX + selectorWidth + 'px'
-
-      // console.log(`start === ${startSlider.style.left} end === ${endSlider.style.left}`)
-
-      centerSlider.style.left = startSlider.style.left
-      centerSlider.style.right = canvasWidth - endPos + 'px'
-    }
-
-    zoom.start = scaledPos(startPos)
-    zoom.end = scaledPos(endPos)
-
-    drawInterval()
+  if (dragged === startSlider && target > parseInt(endSlider.style.left)) {
+    target = parseInt(endSlider.style.left)
+  } else if (dragged === endSlider && target < parseInt(startSlider.style.left)) {
+    target = parseInt(startSlider.style.left) + 5
+  } else if (target < mapGraph.offsetLeft) {
+    target = 0
+  } else if (target > mapGraph.offsetLeft + mapGraph.width) {
+    target = mapGraph.offsetLeft + mapGraph.width
   }
 })
 
-document.addEventListener('mousedown', event => {
-  const startPos = Number(startSlider.style.left.replace('px', ''))
-  const endPos = Number(endSlider.style.left.replace('px', ''))
+function anime () {
+  if (stopAnime) {
+    return
+  }
 
-  if (event.target === startSlider || event.target === endSlider) {
+  const startPos = parseInt(startSlider.style.left)
+  const endPos = parseInt(endSlider.style.left)
+
+  let newStart = startPos
+  let newEnd = endPos
+
+  const selectorWidth = (endPos - startPos) / 2
+
+  if (dragged === startSlider) {
+    newStart += (target - startPos) * velocity
+  } else if (dragged === endSlider) {
+    newEnd += (target - endPos) * velocity
+  } else {
+    if (target - selectorWidth < 0) {
+      newStart += (0 - startPos) * velocity
+
+      newEnd += (0 + selectorWidth * 2 - endPos) * velocity
+    } else if (target + selectorWidth > canvasWidth) {
+      newStart += (canvasWidth - selectorWidth * 2 - startPos) * velocity
+
+      newEnd += (canvasWidth - endPos) * velocity
+    } else {
+      newStart += (target - selectorWidth - startPos) * velocity
+
+      newEnd += (target + selectorWidth - endPos) * velocity
+    }
+  }
+
+  startSlider.style.left = newStart + 'px'
+  endSlider.style.left = newEnd + 'px'
+
+  centerSlider.style.left = startSlider.style.left
+  centerSlider.style.right = canvasWidth - newEnd + 'px'
+
+  zoom.start = scaledPos(newStart)
+  zoom.end = scaledPos(newEnd)
+
+  drawInterval()
+
+  requestAnimationFrame(anime)
+}
+
+document.addEventListener('mousedown', event => {
+  if (event.target === startSlider || event.target === endSlider || event.target === centerSlider) {
     dragged = event.target
-  } else if (event.layerX > startPos && event.layerX < endPos) {
-    dragged = centerSlider
+
+    stopAnime = false
+    anime()
   }
 })
 
 document.addEventListener('mouseup', event => {
   dragged = null
+  stopAnime = true
 })
 
-generateData(100, 0, 100000)
+generateData(500, 0, 1500)
+
+// ;(function () {
+//   const pi = Math.PI * 2 / 1000
+
+//   let x = 0
+
+//   for (let i = 0; i < 1000; i++) {
+//     x += pi
+
+// const data = [Math.sin(x), x, Math.cos(x)]
+
+//     globalData.push([x, Math.cos(x)])
+//   }
+// })()
 
 drawMap()
 
