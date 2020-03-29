@@ -9,12 +9,15 @@ const canvasHeight = 250
 
 const mapHeight = 100
 
+const lineWidth = 5
+
 const mapWrapper = document.getElementById('map-wrapper')
 const startSlider = document.getElementById('start-slider')
 const centerSlider = document.getElementById('center-slider')
 const endSlider = document.getElementById('end-slider')
 
-const lineWidth = 5
+const anchorWidth = 5
+const anchorHalfWidth = Math.round(anchorWidth / 2)
 
 const velocity = 0.15
 
@@ -125,7 +128,7 @@ function drawMap () {
   ctxMap.strokeStyle = '#88ed2a'
   ctxMap.lineWidth = 1
 
-  ctxMap.moveTo(...transformPoint(globalData[0], 0, interval, mapHeight))
+  ctxMap.moveTo(...transformPoint(globalData[0], 0, globalSize, mapHeight))
 
   for (let i = 1; i < globalData.length; i++) {
     ctxMap.lineTo(...transformPoint(globalData[i], 0, globalSize, mapHeight))
@@ -133,7 +136,7 @@ function drawMap () {
 
   ctxMap.stroke()
 }
-// щас будем разбираться что такое Lua
+
 function drawInterval () {
   const { start, end } = zoom
 
@@ -151,9 +154,7 @@ function drawInterval () {
   ctx.strokeStyle = '#88ed2a'
   ctx.lineWidth = lineWidth
 
-  ctx.moveTo(...transformPoint(globalData[start.index], zoom.start, interval, canvasHeight))
-  // console.log(globalData.length)
-  // console.log(end.index)
+  ctx.moveTo(...transformPoint(globalData[start.index], start.position, interval, canvasHeight))
 
   for (let i = start.index + 1; i <= end.index; i++) {
     ctx.lineTo(...transformPoint(globalData[i], start.position, interval, canvasHeight))
@@ -163,10 +164,12 @@ function drawInterval () {
 }
 
 function dragTarget (event) {
-  if (event.target === startSlider || event.target === endSlider || event.target === centerSlider) {
+  if (event.target.id === 'start-slider' || event.target.id === 'end-slider' || event.target.id === 'center-slider') {
     dragged = event.target
 
     stopAnime = false
+
+    mousePosition(event)
     anime()
   }
 }
@@ -177,19 +180,23 @@ function dropTarget () {
 }
 
 function mousePosition (event) {
+  if (stopAnime) {
+    return
+  }
+
   const startPosition = parseInt(startSlider.style.left)
   const endPosition = parseInt(endSlider.style.left)
 
   target = event.clientX - mapWrapper.offsetLeft
 
-  if (dragged === startSlider && target > endPosition) {
+  if (dragged.id === 'start-slider' && target > endPosition) {
     target = endPosition
-  } else if (dragged === endSlider && target < startPosition) {
-    target = startPosition + 5 // 5 === width of startSlider && endSlider
-  } else if (target < mapGraph.offsetLeft) {
-    target = 0
+  } else if (dragged.id === 'end-slider' && target < startPosition) {
+    target = startPosition
+  } else if (target <= mapGraph.offsetLeft) {
+    target = -anchorHalfWidth
   } else if (target > mapGraph.offsetLeft + mapGraph.width) {
-    target = mapGraph.offsetLeft + mapGraph.width
+    target = mapGraph.offsetLeft + mapGraph.width + anchorHalfWidth
   }
 }
 
@@ -206,19 +213,19 @@ function anime () {
 
   const selectorWidth = (endPos - startPos) / 2
 
-  if (dragged === startSlider) {
+  if (dragged.id === 'start-slider') {
     newStart += (target - startPos) * velocity
-  } else if (dragged === endSlider) {
+  } else if (dragged.id === 'end-slider') {
     newEnd += (target - endPos) * velocity
   } else {
     if (target - selectorWidth < 0) {
-      newStart += (0 - startPos) * velocity
+      newStart += (-anchorHalfWidth - startPos) * velocity
 
-      newEnd += (0 + selectorWidth * 2 - endPos) * velocity
+      newEnd += (-anchorHalfWidth + selectorWidth * 2 - endPos) * velocity
     } else if (target + selectorWidth > canvasWidth) {
-      newStart += (canvasWidth - selectorWidth * 2 - startPos) * velocity
+      newStart += (anchorHalfWidth + canvasWidth - selectorWidth * 2 - startPos) * velocity
 
-      newEnd += (canvasWidth - endPos) * velocity
+      newEnd += (anchorHalfWidth + canvasWidth - endPos) * velocity
     } else {
       newStart += (target - selectorWidth - startPos) * velocity
 
@@ -226,11 +233,14 @@ function anime () {
     }
   }
 
-  startSlider.style.left = newStart + 'px'
-  endSlider.style.left = newEnd + 'px'
+  newStart = Math.round(newStart)
+  newEnd = Math.round(newEnd)
+
+  startSlider.style.left = `${newStart}px`
+  endSlider.style.left = `${newEnd}px`
 
   centerSlider.style.left = startSlider.style.left
-  centerSlider.style.right = canvasWidth - newEnd + 'px'
+  centerSlider.style.right = `${canvasWidth - newEnd}px`
 
   zoom.start.position = scaledPos(newStart)
   zoom.end.position = scaledPos(newEnd)
@@ -269,8 +279,11 @@ function init () {
     }
   }
 
+  startSlider.style.width = `${anchorWidth}px`
   startSlider.style.left = '0px'
-  endSlider.style.left = canvasWidth + 'px'
+
+  endSlider.style.width = `${anchorWidth}px`
+  endSlider.style.left = `${canvasWidth}px`
 
   centerSlider.style.left = '0px'
   centerSlider.style.right = '0px'
